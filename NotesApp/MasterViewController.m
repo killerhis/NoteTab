@@ -7,8 +7,9 @@
 //
 
 #import "MasterViewController.h"
-
 #import "DetailViewController.h"
+#import "Data.h"
+#import "GAIDictionaryBuilder.h"
 
 @interface MasterViewController () {
     NSMutableArray *_objects;
@@ -22,14 +23,45 @@
     [super awakeFromNib];
 }
 
+-(UIStatusBarStyle)preferredStatusBarStyle{
+    return UIStatusBarStyleLightContent;
+}
+
 - (void)viewDidLoad
 {
     [super viewDidLoad];
+    //[self setNeedsStatusBarAppearanceUpdate];
 	// Do any additional setup after loading the view, typically from a nib.
-    self.navigationItem.leftBarButtonItem = self.editButtonItem;
+    //self.navigationItem.leftBarButtonItem = self.editButtonItem;
 
     UIBarButtonItem *addButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(insertNewObject:)];
     self.navigationItem.rightBarButtonItem = addButton;
+}
+
+- (void)viewDidAppear:(BOOL)animated
+{
+    [super viewDidAppear:animated];
+    
+    // Google Analytics
+    id<GAITracker> tracker = [[GAI sharedInstance] defaultTracker];
+    [tracker set:kGAIScreenName value:@"NoteListView"];
+    [tracker send:[[GAIDictionaryBuilder createAppView] build]];
+}
+
+
+- (void)viewWillAppear:(BOOL)animated
+{
+    [super viewWillAppear:animated];
+    [self makeObjects];
+    [self.tableView reloadData];
+}
+
+- (void)makeObjects
+{
+    _objects = [NSMutableArray arrayWithArray:[[Data getAllNotes] allKeys]];
+    [_objects sortUsingComparator:^NSComparisonResult(id obj1, id obj2) {
+        return [(NSDate *)obj2 compare:(NSDate *)obj1];
+    }];
 }
 
 - (void)didReceiveMemoryWarning
@@ -40,12 +72,18 @@
 
 - (void)insertNewObject:(id)sender
 {
-    if (!_objects) {
-        _objects = [[NSMutableArray alloc] init];
-    }
-    [_objects insertObject:[NSDate date] atIndex:0];
+    [self makeObjects];
+    
+    NSString *key = [[NSDate date] description];
+    [Data setNote:kDefaultText forKey:key];
+    [Data setCurrentKey:key];
+    
+    [_objects insertObject:key atIndex:0];
+    
     NSIndexPath *indexPath = [NSIndexPath indexPathForRow:0 inSection:0];
     [self.tableView insertRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+    
+    [self performSegueWithIdentifier:kDetailView sender:self];
 }
 
 #pragma mark - Table View
@@ -65,7 +103,7 @@
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Cell" forIndexPath:indexPath];
 
     NSDate *object = _objects[indexPath.row];
-    cell.textLabel.text = [object description];
+    cell.textLabel.text = [[Data getAllNotes] objectForKey:[object description]];
     return cell;
 }
 
@@ -78,6 +116,9 @@
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath
 {
     if (editingStyle == UITableViewCellEditingStyleDelete) {
+        [Data removeNoteForKey:[_objects objectAtIndex:indexPath.row]];
+        [Data saveNotes];
+        
         [_objects removeObjectAtIndex:indexPath.row];
         [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationFade];
     } else if (editingStyle == UITableViewCellEditingStyleInsert) {
